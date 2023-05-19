@@ -52,7 +52,7 @@ impl MultiSend {
     amounts_per_address
   }
   
-  fn assert_balances_should_bigger_than_input(&self, account_map: &HashMap<String, Vec<Coin>>) -> Result<(), String> {
+  fn assert_balances_should_bigger_than_input(&self, account_map: &HashMap<String, Vec<Coin>>, token_map: &HashMap<String, DenomDefinition>) -> Result<(), String> {
     let amounts_per_account = self.get_inputs_amounts_per_address();
     
     for (address, account_token_map) in amounts_per_account.iter() {
@@ -61,7 +61,8 @@ impl MultiSend {
         return Err(format!("Address not found in original balances {}", address));
       }
       for (denom, value) in account_token_map.iter() {
-        let res = account_coins.unwrap().iter().find(|&coin| coin.denom == *denom && coin.amount >= *value);
+        let token_denom = token_map.get(denom).expect("Invalid Token Found");
+        let res = account_coins.unwrap().iter().find(|&coin| coin.denom == *denom && coin.amount >= token_denom.calculated_amount(*value));
         if res.is_none() {
           return Err(format!("Insufficient balance for token: {} in address: {}", denom, address));
         }
@@ -147,13 +148,18 @@ struct DenomDefinition {
 //   There are examples in README.md, you can convert them into tests, but you should add more cases.
 
 impl DenomDefinition {
-  fn get_burn_amount(&self, amount: i128) -> i128 {
+  fn calculated_amount(&self, amount: i128) -> i128 {
+    amount + self.burn_amount(amount) + self.commission_amount(amount)
+  }
+
+  fn burn_amount(&self, amount: i128) -> i128 {
       (self.burn_rate * (amount as f64)).ceil() as i128
   }
 
-  fn get_commission_amount(&self, amount: i128) -> i128 {
+  fn commission_amount(&self, amount: i128) -> i128 {
       (self.commission_rate * (amount as f64)).ceil() as i128
   }
+  
 }
 
 fn calculate_balance_changes(
@@ -166,7 +172,7 @@ fn calculate_balance_changes(
 
     // check the input amounts and output amounts
     multi_send_tx.assert_input_output_amounts_should_same()?;
-    multi_send_tx.assert_balances_should_bigger_than_input(&account_map)?;
+    multi_send_tx.assert_balances_should_bigger_than_input(&account_map, &token_map)?;
 
     Err("Error".to_string())
 }
@@ -175,5 +181,4 @@ fn calculate_balance_changes(
 #[cfg(test)]
 mod tests {
   use super::*;
-  
 }
